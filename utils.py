@@ -2,7 +2,7 @@ import copy
 from aif360.metrics import ClassificationMetric
 import numpy as np
 
-def test_preproc(model, test_datasets, dataset):
+def test_preproc(model, test_datasets, dataset, base_classifier='lr'):
     # Requires model to have a predict function
     # Provision for multiple test sets: original split, biased according to training bias and a balanced test set.
     if dataset == 'adult':
@@ -32,7 +32,13 @@ def test_preproc(model, test_datasets, dataset):
         unprivileged_groups = [{'sensitive': 0}]
     results = {}
     for i in test_datasets:
-        new_preds_test = model.predict(test_datasets[i].features[:,:-1])
+        if base_classifier != 'mlp':
+            new_preds_test = model.predict(test_datasets[i].features[:,:-1])
+        else:
+            y_test = test_datasets[i].labels
+            x_test = {'data': test_datasets[i].features[:,:-1].astype(np.float32),
+                        'sample_weight': np.ones_like(y_test).astype(np.float32)}
+            new_preds_test = np.argmax(model.predict(x_test), axis=1)
         pred_test_set = copy.deepcopy(test_datasets[i])
         pred_test_set.labels = new_preds_test
         results[i] = ClassificationMetric(test_datasets[i], pred_test_set, unprivileged_groups=unprivileged_groups, privileged_groups=privileged_groups)

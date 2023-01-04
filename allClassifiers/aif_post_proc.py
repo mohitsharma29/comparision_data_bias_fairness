@@ -1,7 +1,8 @@
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from aif360.algorithms.postprocessing import CalibratedEqOddsPostprocessing, RejectOptionClassification, EqOddsPostprocessing
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
 import numpy as np
 from aif360.metrics import ClassificationMetric
 
@@ -47,6 +48,8 @@ def train_aif_post_proc(train_dataset, test_datasets, algorithm, base_classifier
         lr_model = LogisticRegression().fit(new_train_set.features[:,:-1], new_train_set.labels.ravel())
     elif base_classifier == 'rf':
         lr_model = RandomForestClassifier().fit(new_train_set.features[:,:-1], new_train_set.labels.ravel())
+    elif base_classifier == 'svm':
+        lr_model = CalibratedClassifierCV().fit(new_train_set.features[:,:-1], new_train_set.labels.ravel())
     fav_idx = np.where(lr_model.classes_ == new_train_set.favorable_label)[0][0]
     
     class_thresh = 0.5

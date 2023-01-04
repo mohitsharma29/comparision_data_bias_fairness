@@ -1,10 +1,12 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="5"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 import argparse
 from tqdm import tqdm as tqdm
 
 from allClassifiers import reweighing, exp_grad, aif_post_proc, jiang_nachum, prej_remover, gerry_fair, grid_search
+
+import mlp_classifier
 
 from data_utils import preprocessDataset
 from jn_preprocessing import preprocessAdult
@@ -15,7 +17,9 @@ import math
 import warnings
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.neural_network import MLPClassifier
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
+import numpy as np
 warnings.filterwarnings('ignore')
 
 parser = argparse.ArgumentParser()
@@ -39,31 +43,35 @@ if __name__ == '__main__':
     print('Performing Under-Representation Experiments')
     for i in tqdm(os.listdir(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/betaDatasets/')):
         try:
-            #train_dataset, test_dataset_biased = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/{args.dataset}/raw/betaDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/{args.dataset}/raw/test_betaDatasets/{i}', args.dataset)
-            if args.dataset == 'adult':
+            train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/betaDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)
+            """if args.dataset == 'adult':
                 #train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/betaDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)
                 train_dataset, test_dataset_original = preprocessAdult(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/betaDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv')
             elif args.dataset == 'credit':
-                train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/betaDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)
+                train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/betaDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)"""
             #_, test_dataset_balanced = preprocessDataset(f'/media/data_dump/Mohit/neurips2022_data/{args.dataset}/raw/betaDatasets/{i}', f'/media/data_dump/Mohit/neurips2022_data/{args.dataset}/balanced/balanced_test.csv', args.dataset)
             test_datasets = {
                 #'balanced':test_dataset_balanced,
                 #'biased':test_dataset_biased,
                 'original':test_dataset_original
             }
-            if args.base_classifier == 'mlp':
-                data_shape = train_dataset.features.shape
+            
             if args.algorithm == 'base':
                 if args.base_classifier == 'lr':
                     model = LogisticRegression().fit(train_dataset.features[:,:-1], train_dataset.labels)
                 elif args.base_classifier == 'rf':
                     model = RandomForestClassifier().fit(train_dataset.features[:,:-1], train_dataset.labels)
+                elif args.base_classifier == 'svm':
+                    model = CalibratedClassifierCV().fit(train_dataset.features[:,:-1], train_dataset.labels)
                 elif args.base_classifier == 'mlp':
-                    model = MLPClassifier(hidden_layer_sizes=(math.ceil((2*data_shape[0])/data_shape[1]),)).fit(train_dataset.features[:,:-1], train_dataset.labels)
-                results['undersample'][i] = test_preproc(model, test_datasets, args.dataset)
+                    y_train = train_dataset.labels.ravel().astype(int)
+                    x_train = {'data': train_dataset.features[:,:-1].astype(np.float32),
+                        'sample_weight': np.ones_like(y_train).astype(np.float32)}
+                    model = mlp_classifier.mlp_model(train_dataset.features.shape).fit(x_train, y_train)
+                results['undersample'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
             elif args.algorithm == 'rew':
                 model = reweighing.train_rew(train_dataset, base_classifier=args.base_classifier, dataset=args.dataset)
-                results['undersample'][i] = test_preproc(model, test_datasets, args.dataset)
+                results['undersample'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
             elif args.algorithm == 'jiang_nachum':
                 model = jiang_nachum.train_jiang_nachum_reweighing(train_dataset, modelType=args.base_classifier, constraint=args.constraint)
                 results['undersample'][i] = test_preproc(model, test_datasets, args.dataset)
@@ -88,30 +96,40 @@ if __name__ == '__main__':
         except Exception as e:
             print(i, args.algorithm)
             print(e)
-            continue
+            raise
     
     # Label Bias Results
     results['label_bias'] = {}
     print()
     print('Performing Label Bias Experiments')
     for i in tqdm(os.listdir(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/labelBiasDatasets/')):
-        #train_dataset, test_dataset_biased = preprocessDataset(f'/media/data_dump/Mohit/neurips2022_data/{args.dataset}/raw/labelBiasDatasets_train/{i}', f'/media/data_dump/Mohit/neurips2022_data/{args.dataset}/raw/labelBiasDatasets_test/{i}', args.dataset)
-        if args.dataset == 'adult':
+        train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/labelBiasDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)
+        """if args.dataset == 'adult':
             #train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/labelBiasDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)
             train_dataset, test_dataset_original = preprocessAdult(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/labelBiasDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv')
         elif args.dataset == 'credit':
-            train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/labelBiasDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)
+            train_dataset, test_dataset_original = preprocessDataset(f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/labelBiasDatasets/{i}', f'/media/data_dump/Mohit/facct23_samplebias_data/run_{args.run_index}/{args.dataset}/raw/original_test.csv', args.dataset)"""
         test_datasets = {
             #'balanced':test_dataset_balanced,
             #'biased':test_dataset_biased,
             'original':test_dataset_original
         }
         if args.algorithm == 'base':
-            model = LogisticRegression().fit(train_dataset.features[:,:-1], train_dataset.labels)
-            results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset)
+            if args.base_classifier == 'lr':
+                model = LogisticRegression().fit(train_dataset.features[:,:-1], train_dataset.labels)
+            elif args.base_classifier == 'rf':
+                model = RandomForestClassifier().fit(train_dataset.features[:,:-1], train_dataset.labels)
+            elif args.base_classifier == 'svm':
+                model = CalibratedClassifierCV().fit(train_dataset.features[:,:-1], train_dataset.labels)
+            elif args.base_classifier == 'mlp':
+                y_train = train_dataset.labels.ravel().astype(int)
+                x_train = {'data': train_dataset.features[:,:-1].astype(np.float32),
+                    'sample_weight': np.ones_like(y_train).astype(np.float32)}
+                model = mlp_classifier.mlp_model(train_dataset.features.shape).fit(x_train, y_train)
+            results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
         elif args.algorithm == 'rew':
             model = reweighing.train_rew(train_dataset, base_classifier=args.base_classifier, dataset=args.dataset)
-            results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset)
+            results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
         elif args.algorithm == 'jiang_nachum':
             model = jiang_nachum.train_jiang_nachum_reweighing(train_dataset, modelType=args.base_classifier, constraint=args.constraint)
             results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset)

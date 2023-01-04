@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 import copy
 
@@ -108,7 +109,7 @@ def train_jiang_nachum_reweighing(train_dataset, modelType='lr', constraint='dp'
         if modelType == 'lr':
             model = LogisticRegression()
         elif modelType == 'svm':
-            model = SVC()
+            model = CalibratedClassifierCV()
         elif modelType == 'rf':
             model = RandomForestClassifier()
         model.fit(X_train, y_train, weights)

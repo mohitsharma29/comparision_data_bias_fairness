@@ -1,9 +1,18 @@
 from aif360.algorithms.preprocessing import Reweighing
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.neural_network import MLPClassifier
 import math
+from skorch import NeuralNetClassifier, NeuralNet
+import skorch
+from torch import nn
+import torch
+import numpy as np
+import sys
+sys.path.insert(1, '../')
+import mlp_classifier
 
 def train_rew(train_dataset, base_classifier, dataset):
     if dataset == 'adult':
@@ -46,12 +55,16 @@ def train_rew(train_dataset, base_classifier, dataset):
     new_train_dataset = preProc.transform(train_dataset)
     if base_classifier == 'lr':
         model = LogisticRegression()
+        model.fit(new_train_dataset.features[:,:-1], new_train_dataset.labels.ravel(), sample_weight=new_train_dataset.instance_weights)
     elif base_classifier == 'svm':
-        model = SVC(probability=True)
+        model = CalibratedClassifierCV()
+        model.fit(new_train_dataset.features[:,:-1], new_train_dataset.labels.ravel(), sample_weight=new_train_dataset.instance_weights)
     elif base_classifier == 'rf':
         model = RandomForestClassifier()
+        model.fit(new_train_dataset.features[:,:-1], new_train_dataset.labels.ravel(), sample_weight=new_train_dataset.instance_weights)
     elif base_classifier == 'mlp':
-        data_shape = train_dataset.features.shape
-        model = MLPClassifier(hidden_layer_sizes=(math.ceil((2*data_shape[0])/data_shape[1]),))
-    model.fit(new_train_dataset.features[:,:-1], new_train_dataset.labels.ravel(), sample_weight=new_train_dataset.instance_weights)
+        y_train = new_train_dataset.labels.ravel().astype(int)
+        x_train = {'data': new_train_dataset.features[:,:-1].astype(np.float32),
+            'sample_weight': new_train_dataset.instance_weights.astype(np.float32)}
+        model = mlp_classifier.mlp_model(new_train_dataset.features.shape).fit(x_train, y_train)
     return model
