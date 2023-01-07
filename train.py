@@ -74,7 +74,7 @@ if __name__ == '__main__':
                 results['undersample'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
             elif args.algorithm == 'jiang_nachum':
                 model = jiang_nachum.train_jiang_nachum_reweighing(train_dataset, modelType=args.base_classifier, constraint=args.constraint)
-                results['undersample'][i] = test_preproc(model, test_datasets, args.dataset)
+                results['undersample'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
             elif args.algorithm == 'exp_grad':
                 model = exp_grad.train_exp_grad(train_dataset, base_classifier=args.base_classifier, constraint=args.constraint)
                 results['undersample'][i] = test_inproc(model, test_datasets, args.dataset)
@@ -96,7 +96,7 @@ if __name__ == '__main__':
         except Exception as e:
             print(i, args.algorithm)
             print(e)
-            raise
+            continue
     
     # Label Bias Results
     results['label_bias'] = {}
@@ -132,7 +132,7 @@ if __name__ == '__main__':
             results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
         elif args.algorithm == 'jiang_nachum':
             model = jiang_nachum.train_jiang_nachum_reweighing(train_dataset, modelType=args.base_classifier, constraint=args.constraint)
-            results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset)
+            results['label_bias'][i] = test_preproc(model, test_datasets, args.dataset, args.base_classifier)
         elif args.algorithm == 'exp_grad':
             model = exp_grad.train_exp_grad(train_dataset, base_classifier=args.base_classifier, constraint=args.constraint)
             results['label_bias'][i] = test_inproc(model, test_datasets, args.dataset)

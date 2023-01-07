@@ -4,6 +4,13 @@ from sklearn.svm import LinearSVC
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 import copy
+import skorch
+from torch import nn
+import torch
+import numpy as np
+import sys
+sys.path.insert(1, '../')
+import mlp_classifier
 
 # Identifying and correcting label bias in Machine Learning: https://arxiv.org/pdf/1901.04966.pdf#page=9&zoom=100,0,0
 # Code taken from: https://github.com/google-research/google-research
@@ -108,12 +115,24 @@ def train_jiang_nachum_reweighing(train_dataset, modelType='lr', constraint='dp'
     for it in range(n_iters):
         if modelType == 'lr':
             model = LogisticRegression()
+            model.fit(X_train, y_train, weights)
+            y_pred_train = model.predict(X_train)
         elif modelType == 'svm':
             model = CalibratedClassifierCV()
+            model.fit(X_train, y_train, weights)
+            y_pred_train = model.predict(X_train)
         elif modelType == 'rf':
             model = RandomForestClassifier()
-        model.fit(X_train, y_train, weights)
-        y_pred_train = model.predict(X_train)
+            model.fit(X_train, y_train, weights)
+            y_pred_train = model.predict(X_train)
+        elif modelType == 'mlp':
+            train_set = {'data': X_train.astype(np.float32),
+            'sample_weight': weights.astype(np.float32)}
+            model = mlp_classifier.mlp_model(train_dataset.features.shape).fit(train_set, y_train.astype(int))
+            pred_train_set = {'data': X_train.astype(np.float32),
+            'sample_weight': np.ones_like(y_train).astype(np.float32)}
+            y_pred_train = np.argmax(model.predict(pred_train_set), axis=1)
+        
         if constraint == 'dp':
             weights = debias_weights_dp(y_train, protected_train, multipliers)
             acc, violations, pairwise_violations = get_error_and_violations_dp(y_pred_train, y_train, protected_train)
@@ -124,30 +143,4 @@ def train_jiang_nachum_reweighing(train_dataset, modelType='lr', constraint='dp'
             weights = debias_weights_eop(y_train, y_pred_train, protected_train, multipliers)
             acc, violations, pairwise_violations = get_error_and_violations_eop(y_pred_train, y_train, protected_train)
         multipliers += learning_rate * np.array(violations)
-        
-        # if (it + 1) % n_iters == 0:
-        #     y_pred_test = model.predict(X_test)
-        #     if constraint == 'dp':
-        #         acc, violations, pairwise_violations = get_error_and_violations_dp(y_pred_train, y_train, protected_train)
-        #     elif constraint == 'eodds':
-        #         acc, violations, pairwise_violations = get_error_and_violations_eodds(y_pred_train, y_train, protected_train)
-        #     if constraint == 'eop':
-        #         acc, violations, pairwise_violations = get_error_and_violations_eop(y_pred_train, y_train, protected_train)
-        #     #print("Train Accuracy", acc)
-        #     #print("Train Violation", max(np.abs(violations)), " \t\t All violations", violations)
-        #     #if len(pairwise_violations) > 0:
-        #     #    print("Train Intersect Violations", max(np.abs(pairwise_violations)), " \t All violations", pairwise_violations)
-        #     trainLogs = (acc, violations)
-        #     if constraint == 'dp':
-        #         acc, violations, pairwise_violations = get_error_and_violations_dp(y_pred_test, y_test, protected_test)
-        #     elif constraint == 'eodds':
-        #         acc, violations, pairwise_violations = get_error_and_violations_eodds(y_pred_test, y_test, protected_test)
-        #     elif constraint == 'eop':
-        #         acc, violations, pairwise_violations = get_error_and_violations_eop(y_pred_test, y_test, protected_test)
-        #     #print("Test Accuracy", acc)
-        #     #print("Test Violation", max(np.abs(violations)), " \t\t All violations", violations)
-        #     #if len(pairwise_violations) > 0:
-        #     #    print("Test Intersect Violations", max(np.abs(pairwise_violations)), " \t All violations", pairwise_violations)
-        #     # print()
-        #     testLogs = (acc, violations)
     return model

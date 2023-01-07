@@ -8,7 +8,7 @@ from torch import nn
 import torch
 import math
 
-def mlp_model(data_shape):
+def mlp_model(data_shape, sample_weight=True):
     class MyModule(nn.Module):
         def __init__(self, data_shape, nonlin=nn.ReLU()):
             super().__init__()
@@ -39,15 +39,28 @@ def mlp_model(data_shape):
             loss_reduced = (sample_weight * loss_unreduced).mean()
             return loss_reduced
     
-    net = MyNet(
-        MyModule(data_shape),
-        criterion=nn.NLLLoss,
-        optimizer=torch.optim.Adam,
-        train_split=None,
-        max_epochs=100,
-        lr=0.01,
-        # Shuffle training data on each epoch
-        iterator_train__shuffle=True,
-        device=0,
-        verbose=False)
+    if sample_weight == True:
+        net = MyNet(
+            MyModule(data_shape),
+            criterion=nn.NLLLoss,
+            optimizer=torch.optim.Adam,
+            train_split=None,
+            max_epochs=100,
+            lr=0.01,
+            # Shuffle training data on each epoch
+            iterator_train__shuffle=True,
+            device=0,
+            verbose=False)
+    else:
+        net = NeuralNetClassifier(
+            MyModule(data_shape),
+            criterion=nn.NLLLoss,
+            optimizer=torch.optim.Adam,
+            train_split=None,
+            max_epochs=100,
+            lr=0.01,
+            # Shuffle training data on each epoch
+            iterator_train__shuffle=True,
+            device=0,
+            verbose=False)
     return net
